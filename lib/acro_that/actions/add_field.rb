@@ -4,6 +4,8 @@ module AcroThat
   module Actions
     # Action to add a new field to a PDF document
     class AddField
+      include Base
+
       attr_reader :field_obj_num, :field_type, :field_value
 
       def initialize(document, name, options = {})
@@ -63,25 +65,6 @@ module AcroThat
 
       private
 
-      def resolver
-        @document.instance_variable_get(:@resolver)
-      end
-
-      def patches
-        @document.instance_variable_get(:@patches)
-      end
-
-      def next_fresh_object_number
-        max_obj_num = 0
-        resolver.each_object do |ref, _|
-          max_obj_num = [max_obj_num, ref[0]].max
-        end
-        patches.each do |p|
-          max_obj_num = [max_obj_num, p[:ref][0]].max
-        end
-        max_obj_num + 1
-      end
-
       def create_field_dictionary(value, type)
         dict = "<<\n"
         dict += "  /FT #{type}\n"
@@ -113,9 +96,7 @@ module AcroThat
         af_ref = acroform_ref
         return false unless af_ref
 
-        af_body = resolver.object_body(af_ref)
-        existing_patch = patches.find { |p| p[:ref] == af_ref }
-        af_body = existing_patch[:body] if existing_patch
+        af_body = get_object_body_with_patch(af_ref)
 
         patched = af_body.dup
 
@@ -125,13 +106,9 @@ module AcroThat
         if fields_array_ref && fields_array_ref =~ /\A(\d+)\s+(\d+)\s+R/
           # Reference case: /Fields points to a separate array object
           arr_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
-          arr_body = resolver.object_body(arr_ref)
-          existing_arr_patch = patches.find { |p| p[:ref] == arr_ref }
-          arr_body = existing_arr_patch[:body] if existing_arr_patch
-
+          arr_body = get_object_body_with_patch(arr_ref)
           new_body = DictScan.add_ref_to_array(arr_body, [field_obj_num, 0])
-          patches.reject! { |p| p[:ref] == arr_ref }
-          patches << { ref: arr_ref, body: new_body } if new_body != arr_body
+          apply_patch(arr_ref, new_body, arr_body)
         elsif patched.include?("/Fields")
           # Inline array case: use DictScan utility
           patched = DictScan.add_ref_to_inline_array(patched, "/Fields", [field_obj_num, 0])
@@ -171,9 +148,7 @@ module AcroThat
           end
         end
 
-        patches.reject! { |p| p[:ref] == af_ref }
-        patches << { ref: af_ref, body: patched } if patched != af_body
-
+        apply_patch(af_ref, patched, af_body)
         true
       end
 
@@ -240,10 +215,7 @@ module AcroThat
         target_page_ref = find_page_ref(page_num)
         return false unless target_page_ref
 
-        # Get the page body, checking for existing patches
-        page_body = resolver.object_body(target_page_ref)
-        existing_page_patch = patches.find { |p| p[:ref] == target_page_ref }
-        page_body = existing_page_patch[:body] if existing_page_patch
+        page_body = get_object_body_with_patch(target_page_ref)
 
         # Use DictScan utility to safely add reference to /Annots array
         new_body = if page_body =~ %r{/Annots\s*\[(.*?)\]}m
@@ -264,28 +236,21 @@ module AcroThat
                      end
                    elsif page_body =~ %r{/Annots\s+(\d+)\s+(\d+)\s+R}
                      # Indirect array reference - need to read and modify the array object
-                     annots_array_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
-                     annots_array_body = resolver.object_body(annots_array_ref)
+                       annots_array_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
+                       annots_array_body = get_object_body_with_patch(annots_array_ref)
 
-                     if annots_array_body
-                       # Check for existing patch
-                       existing_annots_patch = patches.find { |p| p[:ref] == annots_array_ref }
-                       annots_array_body = existing_annots_patch[:body] if existing_annots_patch
+                       if annots_array_body
+                         ref_token = "#{widget_obj_num} 0 R"
+                         new_annots_body = if annots_array_body.strip == "[]"
+                                             "[#{ref_token}]"
+                                           elsif annots_array_body.strip.start_with?("[") && annots_array_body.strip.end_with?("]")
+                                             without_brackets = annots_array_body.strip[1..-2].strip
+                                             "[#{without_brackets} #{ref_token}]"
+                                           else
+                                             "[#{annots_array_body} #{ref_token}]"
+                                           end
 
-                       # Add widget reference to the array
-                       ref_token = "#{widget_obj_num} 0 R"
-                       new_annots_body = if annots_array_body.strip == "[]"
-                                           "[#{ref_token}]"
-                                         elsif annots_array_body.strip.start_with?("[") && annots_array_body.strip.end_with?("]")
-                                           without_brackets = annots_array_body.strip[1..-2].strip
-                                           "[#{without_brackets} #{ref_token}]"
-                                         else
-                                           "[#{annots_array_body} #{ref_token}]"
-                                         end
-
-                       # Add patch for the array object
-                       patches.reject! { |p| p[:ref] == annots_array_ref }
-                       patches << { ref: annots_array_ref, body: new_annots_body }
+                         apply_patch(annots_array_ref, new_annots_body, annots_array_body)
 
                        # Page body doesn't need to change (still references the same array object)
                        page_body
@@ -306,15 +271,8 @@ module AcroThat
                      end
                    end
 
-        # Remove any existing patch for this page and add the new one
-        patches.reject! { |p| p[:ref] == target_page_ref }
-        patches << { ref: target_page_ref, body: new_body } if new_body && new_body != page_body
-
+        apply_patch(target_page_ref, new_body, page_body) if new_body && new_body != page_body
         true
-      end
-
-      def acroform_ref
-        @document.send(:acroform_ref)
       end
     end
   end

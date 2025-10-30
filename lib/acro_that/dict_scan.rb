@@ -298,5 +298,11 @@ module AcroThat
       new_arr_tok = add_ref_to_array(arr_tok, ref)
       dict_body.sub(arr_tok) { |_| new_arr_tok }
     end
+
+    def is_widget?(body)
+      return false unless body
+
+      body.include?("/Subtype") && body.include?("/Widget") && body =~ %r{/Subtype\s*/Widget}
+    end
   end
 end

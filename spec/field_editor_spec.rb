@@ -3,7 +3,7 @@
 require "spec_helper"
 require "tempfile"
 
-RSpec.describe AcroThat::FieldEditor do
+RSpec.describe AcroThat::Document do
   let(:test_pdf_path) { "/Users/2b-software-mac/Documents/work/acro-that/Stamford_Trade-Name-Dissolution.pdf" }
   let(:temp_output_path) { Tempfile.new(["test_output", ".pdf"]).path }
 
@@ -22,12 +22,13 @@ RSpec.describe AcroThat::FieldEditor do
       it "lists all 11 expected fields" do
         skip "Test file not available" unless File.exist?(test_pdf_path)
 
-        fields = described_class.list_fields(test_pdf_path)
+        doc = described_class.new(test_pdf_path)
+        fields = doc.list_fields
 
         expect(fields).to be_an(Array)
         expect(fields.length).to eq(11)
 
-        field_names = fields.map { |f| f[:name] }.compact
+        field_names = fields.map(&:name).compact
         expected_names = [
           "Trade Name",
           "File",
@@ -48,13 +49,14 @@ RSpec.describe AcroThat::FieldEditor do
       it "returns field information with correct structure" do
         skip "Test file not available" unless File.exist?(test_pdf_path)
 
-        fields = described_class.list_fields(test_pdf_path)
+        doc = described_class.new(test_pdf_path)
+        fields = doc.list_fields
 
         fields.each do |field|
-          expect(field).to have_key(:name)
-          expect(field).to have_key(:value)
-          expect(field).to have_key(:type)
-          expect(field[:name]).to be_a(String)
+          expect(field).to respond_to(:name)
+          expect(field).to respond_to(:value)
+          expect(field).to respond_to(:type)
+          expect(field.name).to be_a(String)
         end
       end
     end

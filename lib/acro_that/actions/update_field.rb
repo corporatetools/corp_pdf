@@ -4,6 +4,8 @@ module AcroThat
   module Actions
     # Action to update a field's value and optionally rename it in a PDF document
     class UpdateField
+      include Base
+
       def initialize(document, name, new_value, new_name: nil)
         @document = document
         @name = name
@@ -15,13 +17,8 @@ module AcroThat
         fld = @document.list_fields.find { |f| f.name == @name }
         return false unless fld
 
-        # Check if this is a widget annotation (has /Subtype /Widget) or a field object
-        original = resolver.object_body(fld.ref)
+        original = get_object_body_with_patch(fld.ref)
         return false unless original
-
-        # Check for existing patch for this field
-        existing_patch = patches.find { |p| p[:ref] == fld.ref }
-        original = existing_patch[:body] if existing_patch
 
         # Determine if this is a widget annotation or field object
         is_widget = original.include?("/Subtype /Widget")
@@ -33,16 +30,11 @@ module AcroThat
           parent_tok = DictScan.value_token_after("/Parent", original)
           if parent_tok && parent_tok =~ /\A(\d+)\s+(\d+)\s+R/
             field_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
-            # Get and update the parent field object
-            field_body = resolver.object_body(field_ref)
-            if field_body && !field_body.include?("/Subtype /Widget") # Make sure it's actually a field, not another widget
-              existing_field_patch = patches.find { |p| p[:ref] == field_ref }
-              field_body = existing_field_patch[:body] if existing_field_patch
-
+            field_body = get_object_body_with_patch(field_ref)
+            if field_body && !field_body.include?("/Subtype /Widget")
               new_field_body = patch_field_value_body(field_body, @new_value)
               if new_field_body && new_field_body.include?("<<") && new_field_body.include?(">>")
-                patches.reject! { |p| p[:ref] == field_ref }
-                patches << { ref: field_ref, body: new_field_body }
+                apply_patch(field_ref, new_field_body, field_body)
               end
             end
           end
@@ -62,22 +54,17 @@ module AcroThat
           return false
         end
 
-        patches.reject! { |p| p[:ref] == fld.ref }
-        patches << { ref: fld.ref, body: new_body }
+        apply_patch(fld.ref, new_body, original)
 
         # If we renamed the field, also update the parent field object and all widgets
         if @new_name && !@new_name.empty?
           # Update parent field object if it exists (separate from widget)
           if field_ref != fld.ref
-            field_body = resolver.object_body(field_ref)
-            existing_field_patch = patches.find { |p| p[:ref] == field_ref }
-            field_body = existing_field_patch[:body] if existing_field_patch
-            
+            field_body = get_object_body_with_patch(field_ref)
             if field_body && !field_body.include?("/Subtype /Widget")
               new_field_body = patch_field_name_body(field_body, @new_name)
               if new_field_body && new_field_body.include?("<<") && new_field_body.include?(">>")
-                patches.reject! { |p| p[:ref] == field_ref }
-                patches << { ref: field_ref, body: new_field_body }
+                apply_patch(field_ref, new_field_body, field_body)
               end
             end
           end
@@ -96,14 +83,6 @@ module AcroThat
       end
 
       private
-
-      def resolver
-        @document.instance_variable_get(:@resolver)
-      end
-
-      def patches
-        @document.instance_variable_get(:@patches)
-      end
 
       def patch_field_value_body(dict_body, new_value)
         # Simple, reliable approach: Use DictScan methods that preserve structure
@@ -188,14 +167,10 @@ module AcroThat
       def update_widget_annotations_for_field(field_ref, new_value)
         resolver.each_object do |ref, body|
           next unless body
-          # Use flexible widget detection
-          is_widget = body.include?("/Subtype") && body.include?("/Widget") && body =~ %r{/Subtype\s*/Widget}
-          next unless is_widget
+          next unless DictScan.is_widget?(body)
           next unless body.include?("/Parent")
 
-          # Check for existing patch for this widget
-          existing_patch = patches.find { |p| p[:ref] == ref }
-          body = existing_patch[:body] if existing_patch
+          body = get_object_body_with_patch(ref)
 
           parent_tok = DictScan.value_token_after("/Parent", body)
           next unless parent_tok && parent_tok =~ /\A(\d+)\s+(\d+)\s+R/
@@ -204,22 +179,16 @@ module AcroThat
           next unless widget_parent_ref == field_ref
 
           widget_body_patched = patch_field_value_body(body, new_value)
-          # Remove any existing patch for this widget and add the new one
-          patches.reject! { |p| p[:ref] == ref }
-          patches << { ref: ref, body: widget_body_patched } if widget_body_patched != body
+          apply_patch(ref, widget_body_patched, body)
         end
       end
 
       def update_widget_names_for_field(field_ref, new_name)
         resolver.each_object do |ref, body|
           next unless body
-          # Use flexible widget detection
-          is_widget = body.include?("/Subtype") && body.include?("/Widget") && body =~ %r{/Subtype\s*/Widget}
-          next unless is_widget
+          next unless DictScan.is_widget?(body)
 
-          # Check for existing patch for this widget
-          existing_patch = patches.find { |p| p[:ref] == ref }
-          body = existing_patch[:body] if existing_patch
+          body = get_object_body_with_patch(ref)
 
           # Match widgets by /Parent reference
           if body.include?("/Parent")
@@ -228,8 +197,7 @@ module AcroThat
               widget_parent_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
               if widget_parent_ref == field_ref
                 widget_body_patched = patch_field_name_body(body, new_name)
-                patches.reject! { |p| p[:ref] == ref }
-                patches << { ref: ref, body: widget_body_patched } if widget_body_patched != body
+                apply_patch(ref, widget_body_patched, body)
               end
             end
           end
@@ -241,8 +209,7 @@ module AcroThat
               widget_name = DictScan.decode_pdf_string(t_tok)
               if widget_name && widget_name == @name
                 widget_body_patched = patch_field_name_body(body, new_name)
-                patches.reject! { |p| p[:ref] == ref }
-                patches << { ref: ref, body: widget_body_patched } if widget_body_patched != body
+                apply_patch(ref, widget_body_patched, body)
               end
             end
           end
@@ -253,20 +220,11 @@ module AcroThat
         af_ref = acroform_ref
         return unless af_ref
 
-        acro_body = resolver.object_body(af_ref)
-        existing_af_patch = patches.find { |p| p[:ref] == af_ref }
-        acro_body = existing_af_patch[:body] if existing_af_patch
-
+        acro_body = get_object_body_with_patch(af_ref)
         return if acro_body.include?("/NeedAppearances")
 
         acro_patched = DictScan.upsert_key_value(acro_body, "/NeedAppearances", "true")
-        # Remove any existing patch for AcroForm and add the new one
-        patches.reject! { |p| p[:ref] == af_ref }
-        patches << { ref: af_ref, body: acro_patched }
-      end
-
-      def acroform_ref
-        @document.send(:acroform_ref)
+        apply_patch(af_ref, acro_patched, acro_body)
       end
     end
   end
