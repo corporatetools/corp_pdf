@@ -356,6 +356,8 @@ module AcroThat
       return if @objstm_cache.key?(container_ref)
 
       body = object_body(container_ref)
+      raise "Object stream #{container_ref.inspect} not found in xref table" unless body
+
       dict_start = body.index("<<") || 0
       dict_end = balanced_from(body, dict_start)
       dict_src = body[dict_start...dict_end]
