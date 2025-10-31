@@ -78,7 +78,7 @@ module AcroThat
       widgets_by_name = {}
 
       # First pass: collect widget information
-      @resolver.each_object do |ref, body|
+      @resolver.each_object do |_ref, body|
         next unless DictScan.is_widget?(body)
 
         # Extract position from widget
@@ -87,43 +87,41 @@ module AcroThat
 
         # Parse [x y x+width y+height] format
         rect_values = rect_tok.scan(/[-+]?\d*\.?\d+/).map(&:to_f)
-        if rect_values.length == 4
-          x, y, x2, y2 = rect_values
-          width = x2 - x
-          height = y2 - y
+        next unless rect_values.length == 4
 
-          page_num = nil
-          if body =~ %r{/P\s+(\d+)\s+(\d+)\s+R}
-            page_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
-            page_num = find_page_number_for_ref(page_ref)
-          end
+        x, y, x2, y2 = rect_values
+        width = x2 - x
+        height = y2 - y
 
-          widget_info = {
-            x: x, y: y, width: width, height: height, page: page_num
-          }
+        page_num = nil
+        if body =~ %r{/P\s+(\d+)\s+(\d+)\s+R}
+          page_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
+          page_num = find_page_number_for_ref(page_ref)
+        end
 
-          if body =~ %r{/Parent\s+(\d+)\s+(\d+)\s+R}
-            parent_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
+        widget_info = {
+          x: x, y: y, width: width, height: height, page: page_num
+        }
 
-            field_widgets[parent_ref] ||= []
-            field_widgets[parent_ref] << widget_info
-          end
+        if body =~ %r{/Parent\s+(\d+)\s+(\d+)\s+R}
+          parent_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
 
-          if body.include?("/T")
-            t_tok = DictScan.value_token_after("/T", body)
-            if t_tok
-              widget_name = DictScan.decode_pdf_string(t_tok)
-              if widget_name && !widget_name.empty?
-                widgets_by_name[widget_name] ||= []
-                widgets_by_name[widget_name] << widget_info
-              end
+          field_widgets[parent_ref] ||= []
+          field_widgets[parent_ref] << widget_info
+        end
+
+        if body.include?("/T")
+          t_tok = DictScan.value_token_after("/T", body)
+          if t_tok
+            widget_name = DictScan.decode_pdf_string(t_tok)
+            if widget_name && !widget_name.empty?
+              widgets_by_name[widget_name] ||= []
+              widgets_by_name[widget_name] << widget_info
             end
           end
         end
-      end
 
-      # Second pass: collect all fields (both field objects and widget annotations with /T)
-      @resolver.each_object do |ref, body|
+        # Second pass: collect all fields (both field objects and widget annotations with /T)
         next unless body&.include?("/T")
 
         is_widget_field = DictScan.is_widget?(body)

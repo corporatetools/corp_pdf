@@ -55,6 +55,7 @@ module AcroThat
         sorted_patches.each_with_index do |patch, index|
           num, gen = patch[:ref]
           next if num == objstm_num # Skip the object stream itself
+
           entries << [num, gen, 2, objstm_num, index]
         end
 
@@ -66,7 +67,7 @@ module AcroThat
         obj_nums = entries.map { |num, _gen, _type, _f1, _f2| num }
         min_obj = obj_nums.min
         max_obj = obj_nums.max
-        
+
         # For Index, we need consecutive entries from min_obj to max_obj
         # So count is (max_obj - min_obj + 1)
         index_count = max_obj - min_obj + 1
@@ -75,11 +76,11 @@ module AcroThat
         # Build xref stream data with proper ordering
         # W = [1, 4, 2] means: type (1 byte), offset/f1 (4 bytes), index/f2 (2 bytes)
         w = [1, 4, 2]
-        
+
         # Create a map for quick lookup by object number
         entry_map = {}
-        entries.each { |num, gen, type, f1, f2| entry_map[num] = [type, f1, f2] }
-        
+        entries.each { |num, _gen, type, f1, f2| entry_map[num] = [type, f1, f2] }
+
         # Build xref records in order according to Index range
         # Index says entries start at min_obj and we have index_count entries
         xref_records = []
@@ -93,7 +94,7 @@ module AcroThat
             xref_records << [0, 0, 0].pack("C N n")
           end
         end
-        
+
         xref_bytes = xref_records.join("".b)
 
         # Compress xref stream
@@ -126,9 +127,8 @@ module AcroThat
         trailer << " /XRefStm #{xrefstm_offset} >>\n".b
         trailer << "startxref\n#{xref_offset}\n%%EOF\n".b
 
-        result = original_with_newline + buf + trailer
+        original_with_newline + buf + trailer
 
-        result
       else
         # Fallback to individual objects if ObjStm.create fails
         @patches.each do |p|
@@ -184,8 +184,8 @@ module AcroThat
           warn "Warning: xref table seems too short (#{xref.length} bytes). Expected proper entries."
         end
 
-        result
       end
+      result
     end
 
     private

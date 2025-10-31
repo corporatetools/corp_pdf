@@ -153,7 +153,6 @@ module AcroThat
           end
         end
       end
-
     end
   end
 end

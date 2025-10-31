@@ -7,8 +7,7 @@ require "tempfile"
 RSpec.describe "PDF Form Editing" do
   # Helper to load a PDF file from examples folder
   def load_example_pdf(filename)
-    pdf_path = File.join(__dir__, "examples", filename)
-    pdf_path
+    File.join(__dir__, "examples", filename)
   end
 
   # Helper to create Document from file path
@@ -40,7 +39,7 @@ RSpec.describe "PDF Form Editing" do
         expect(fields).not_to be_empty
 
         original_field = fields.first
-        original_value = original_field.value
+        original_field.value
 
         # Update the field
         result = doc.update_field(original_field.name, "Test Value")
@@ -274,12 +273,15 @@ RSpec.describe "PDF Form Editing" do
         doc = create_document_from_path(example_pdf)
 
         # Add text field
-        text_field = doc.add_field("TestTextField", { type: "/Tx", value: "Text Value", x: 100, y: 700, width: 200, height: 20, page: 1 })
+        text_field = doc.add_field("TestTextField",
+                                   { type: "/Tx", value: "Text Value", x: 100, y: 700, width: 200, height: 20,
+                                     page: 1 })
         expect(text_field).not_to be_nil
         expect(text_field.text_field?).to be true
 
         # Add button field
-        button_field = doc.add_field("TestButtonField", { type: "/Btn", value: "/Yes", x: 100, y: 650, width: 20, height: 20, page: 1 })
+        button_field = doc.add_field("TestButtonField",
+                                     { type: "/Btn", value: "/Yes", x: 100, y: 650, width: 20, height: 20, page: 1 })
         expect(button_field).not_to be_nil
         expect(button_field.button_field?).to be true
 
@@ -391,7 +393,7 @@ RSpec.describe "PDF Form Editing" do
         end
 
         it "updates field value and renames field" do
-          original_name = field.name
+          field.name
           new_name = "RenamedField_#{Time.now.to_i}"
 
           result = field.update("New Value", new_name: new_name)
@@ -483,7 +485,7 @@ RSpec.describe "PDF Form Editing" do
       describe "position methods" do
         it "checks if field has position information" do
           field_with_pos = AcroThat::Field.new("Field", "Value", "/Tx", [1, 0], nil,
-                                                { x: 100, y: 200, width: 50, height: 20 })
+                                               { x: 100, y: 200, width: 50, height: 20 })
           field_without_pos = AcroThat::Field.new("Field", "Value", "/Tx", [1, 0])
 
           expect(field_with_pos.has_position?).to be true

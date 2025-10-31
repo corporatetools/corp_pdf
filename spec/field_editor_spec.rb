@@ -17,7 +17,6 @@ RSpec.describe AcroThat::Document do
     FileUtils.rm_f(temp_output_path)
   end
 
-
   describe "error handling" do
     it "handles non-existent files gracefully" do
       expect do
@@ -50,7 +49,6 @@ RSpec.describe AcroThat::Document do
   end
 end
 
-
 RSpec.describe AcroThat::ObjStm do
   describe ".parse" do
     it "parses object stream correctly" do
@@ -69,8 +67,8 @@ RSpec.describe AcroThat::ObjStm do
       off3 = obj1.length + obj2.length
 
       # Header: "obj_num offset obj_num offset obj_num offset"
-      header = "#{1} #{off1} #{2} #{off2} #{3} #{off3}"
-      header_padded = header + " " * (first - header.length)
+      header = "1 #{off1} 2 #{off2} 3 #{off3}"
+      header_padded = header + (" " * (first - header.length))
 
       # Objects start at offset `first`
       container_bytes = header_padded + obj1 + obj2 + obj3
@@ -128,7 +126,7 @@ RSpec.describe AcroThat::DictScan do
       expect(v_value).to eq("(Value)")
 
       # Test that /FT with name value works (names starting with /)
-      ft_value = described_class.value_token_after("/FT", dict_src)
+      described_class.value_token_after("/FT", dict_src)
       # /Tx is a name, which matches as an atom (token not starting with / is matched)
       # But /Tx starts with /, so it might return nil or the partial value
       # Let's just test that string values work, which is the main use case
@@ -161,4 +159,3 @@ RSpec.describe AcroThat::DictScan do
     end
   end
 end
-

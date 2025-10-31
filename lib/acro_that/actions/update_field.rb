@@ -33,6 +33,13 @@ module AcroThat
             field_body = get_object_body_with_patch(field_ref)
             if field_body && !field_body.include?("/Subtype /Widget")
               new_field_body = patch_field_value_body(field_body, @new_value)
+
+              # Check if multiline and remove appearance stream from parent field too
+              is_multiline = DictScan.is_multiline_field?(field_body) || DictScan.is_multiline_field?(new_field_body)
+              if is_multiline
+                new_field_body = DictScan.remove_appearance_stream(new_field_body)
+              end
+
               if new_field_body && new_field_body.include?("<<") && new_field_body.include?(">>")
                 apply_patch(field_ref, new_field_body, field_body)
               end
@@ -42,6 +49,13 @@ module AcroThat
 
         # Update the object we found (widget or field) - always update what we found
         new_body = patch_field_value_body(original, @new_value)
+
+        # Check if this is a multiline field - if so, remove appearance stream
+        # macOS Preview needs appearance streams to be regenerated for multiline fields
+        is_multiline = check_if_multiline_field(field_ref)
+        if is_multiline
+          new_body = DictScan.remove_appearance_stream(new_body)
+        end
 
         # Update field name (/T) if requested
         if @new_name && !@new_name.empty?
@@ -68,7 +82,7 @@ module AcroThat
               end
             end
           end
-          
+
           # Update all widget annotations that reference this field
           update_widget_names_for_field(field_ref, @new_name)
         end
@@ -165,6 +179,10 @@ module AcroThat
       end
 
       def update_widget_annotations_for_field(field_ref, new_value)
+        # Check if the field is multiline by looking at the field object
+        field_body = get_object_body_with_patch(field_ref)
+        is_multiline = field_body && DictScan.is_multiline_field?(field_body)
+
         resolver.each_object do |ref, body|
           next unless body
           next unless DictScan.is_widget?(body)
@@ -179,6 +197,12 @@ module AcroThat
           next unless widget_parent_ref == field_ref
 
           widget_body_patched = patch_field_value_body(body, new_value)
+
+          # For multiline fields, remove appearance stream from widgets too
+          if is_multiline
+            widget_body_patched = DictScan.remove_appearance_stream(widget_body_patched)
+          end
+
           apply_patch(ref, widget_body_patched, body)
         end
       end
@@ -203,15 +227,15 @@ module AcroThat
           end
 
           # Also match widgets by field name (/T) - some widgets might not have /Parent
-          if body.include?("/T")
-            t_tok = DictScan.value_token_after("/T", body)
-            if t_tok
-              widget_name = DictScan.decode_pdf_string(t_tok)
-              if widget_name && widget_name == @name
-                widget_body_patched = patch_field_name_body(body, new_name)
-                apply_patch(ref, widget_body_patched, body)
-              end
-            end
+          next unless body.include?("/T")
+
+          t_tok = DictScan.value_token_after("/T", body)
+          next unless t_tok
+
+          widget_name = DictScan.decode_pdf_string(t_tok)
+          if widget_name && widget_name == @name
+            widget_body_patched = patch_field_name_body(body, new_name)
+            apply_patch(ref, widget_body_patched, body)
           end
         end
       end
@@ -225,6 +249,13 @@ module AcroThat
 
         acro_patched = DictScan.upsert_key_value(acro_body, "/NeedAppearances", "true")
         apply_patch(af_ref, acro_patched, acro_body)
+      end
+
+      def check_if_multiline_field(field_ref)
+        field_body = get_object_body_with_patch(field_ref)
+        return false unless field_body
+
+        DictScan.is_multiline_field?(field_body)
       end
     end
   end

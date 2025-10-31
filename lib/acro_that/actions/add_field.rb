@@ -236,27 +236,26 @@ module AcroThat
                      end
                    elsif page_body =~ %r{/Annots\s+(\d+)\s+(\d+)\s+R}
                      # Indirect array reference - need to read and modify the array object
-                       annots_array_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
-                       annots_array_body = get_object_body_with_patch(annots_array_ref)
+                     annots_array_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
+                     annots_array_body = get_object_body_with_patch(annots_array_ref)
 
-                       if annots_array_body
-                         ref_token = "#{widget_obj_num} 0 R"
-                         new_annots_body = if annots_array_body.strip == "[]"
-                                             "[#{ref_token}]"
-                                           elsif annots_array_body.strip.start_with?("[") && annots_array_body.strip.end_with?("]")
-                                             without_brackets = annots_array_body.strip[1..-2].strip
-                                             "[#{without_brackets} #{ref_token}]"
-                                           else
-                                             "[#{annots_array_body} #{ref_token}]"
-                                           end
+                     ref_token = "#{widget_obj_num} 0 R"
+                     if annots_array_body
+                       new_annots_body = if annots_array_body.strip == "[]"
+                                           "[#{ref_token}]"
+                                         elsif annots_array_body.strip.start_with?("[") && annots_array_body.strip.end_with?("]")
+                                           without_brackets = annots_array_body.strip[1..-2].strip
+                                           "[#{without_brackets} #{ref_token}]"
+                                         else
+                                           "[#{annots_array_body} #{ref_token}]"
+                                         end
 
-                         apply_patch(annots_array_ref, new_annots_body, annots_array_body)
+                       apply_patch(annots_array_ref, new_annots_body, annots_array_body)
 
                        # Page body doesn't need to change (still references the same array object)
                        page_body
                      else
                        # Array object not found - fallback to creating inline array
-                       ref_token = "#{widget_obj_num} 0 R"
                        page_body.sub(%r{/Annots\s+\d+\s+\d+\s+R}, "/Annots [#{ref_token}]")
                      end
                    else

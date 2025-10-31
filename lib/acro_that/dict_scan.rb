@@ -193,6 +193,7 @@ module AcroThat
           ch = dict_src[j]
           # PDF names can contain most characters except NUL, whitespace, and delimiters
           break if ch =~ /[\s<>\[\]()]/ || (ch == "/" && j > i)
+
           j += 1
         end
         j > i ? dict_src[i...j] : nil
@@ -313,6 +314,100 @@ module AcroThat
       return false unless body
 
       body.include?("/Subtype") && body.include?("/Widget") && body =~ %r{/Subtype\s*/Widget}
+    end
+
+    # Check if a field is multiline by checking /Ff flag bit 12 (0x1000)
+    def is_multiline_field?(dict_body)
+      return false unless dict_body
+
+      ff_tok = value_token_after("/Ff", dict_body)
+      return false unless ff_tok
+
+      ff_value = ff_tok.to_i
+      # Bit 12 (0x1000) indicates multiline text field
+      ff_value.anybits?(0x1000)
+    end
+
+    # Remove /AP (appearance stream) entry from a dictionary
+    def remove_appearance_stream(dict_body)
+      return dict_body unless dict_body&.include?("/AP")
+
+      # Find /AP entry using pattern matching
+      ap_key_pattern = %r{/AP(?=[\s(<\[/])}
+      ap_match = dict_body.match(ap_key_pattern)
+      return dict_body unless ap_match
+
+      key_end = ap_match.end(0)
+      value_start = key_end
+      value_start += 1 while value_start < dict_body.length && dict_body[value_start] =~ /\s/
+      return dict_body if value_start >= dict_body.length
+
+      # Determine what type of value we have
+      first_char = dict_body[value_start]
+      value_end = value_start
+
+      if first_char == "<" && value_start + 1 < dict_body.length && dict_body[value_start + 1] == "<"
+        # Inline dictionary: /AP << ... >>
+        # Need to find matching closing >>
+        depth = 0
+        i = value_start
+        while i < dict_body.length
+          if dict_body[i, 2] == "<<"
+            depth += 1
+            i += 2
+          elsif dict_body[i, 2] == ">>"
+            depth -= 1
+            i += 2
+            if depth.zero?
+              value_end = i
+              break
+            end
+          else
+            i += 1
+          end
+        end
+      elsif ["(", "<", "["].include?(first_char)
+        # Use value_token_after to get the complete token
+        ap_tok = value_token_after("/AP", dict_body)
+        return dict_body unless ap_tok
+
+        value_end = value_start + ap_tok.length
+      else
+        # Reference or other simple token
+        ap_tok = value_token_after("/AP", dict_body)
+        return dict_body unless ap_tok
+
+        value_end = value_start + ap_tok.length
+      end
+
+      # Skip trailing whitespace after the value
+      value_end += 1 while value_end < dict_body.length && dict_body[value_end] =~ /\s/
+
+      # Find the start of /AP (may need to remove preceding space/newline)
+      removal_start = ap_match.begin(0)
+
+      # Try to remove preceding whitespace/newline if it's on its own line
+      if removal_start.positive? && dict_body[removal_start - 1] == "\n"
+        # Check if there's whitespace before the newline we should remove too
+        line_start = removal_start - 1
+        line_start -= 1 while line_start.positive? && dict_body[line_start - 1] =~ /\s/
+        # Only remove the line if it starts with whitespace (indentation)
+        if line_start.positive? && dict_body[line_start - 1] == "\n"
+          removal_start = line_start
+        end
+      end
+
+      # Build result without /AP entry
+      before = dict_body[0...removal_start]
+      after = dict_body[value_end..]
+      result = "#{before}#{after}"
+
+      # Verify the result still has valid dictionary structure
+      unless result.include?("<<") && result.include?(">>")
+        return dict_body # Return original if corrupted
+      end
+
+      result
     end
   end
 end

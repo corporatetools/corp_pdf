@@ -34,10 +34,10 @@ module AcroThat
       current_offset = 0
 
       sorted_patches.each do |patch|
-        obj_num, gen = patch[:ref]
+        obj_num, = patch[:ref]
         body = patch[:body].to_s
         # Ensure body ends with newline for proper parsing
-        body = body + "\n" unless body.end_with?("\n")
+        body += "\n" unless body.end_with?("\n")
 
         header_parts << obj_num.to_s
         header_parts << current_offset.to_s
@@ -45,9 +45,9 @@ module AcroThat
         current_offset += body.bytesize
       end
 
-      header = header_parts.join(" ") + "\n"
+      header = "#{header_parts.join(' ')}\n"
       first = header.bytesize
-      object_bodies = body_parts.join("")
+      object_bodies = body_parts.join
 
       # Combine header and bodies
       raw_data = header + object_bodies

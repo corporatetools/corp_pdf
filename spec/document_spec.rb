@@ -117,7 +117,6 @@ RSpec.describe AcroThat::Document do
         expect(added_field.value).to eq("Test Value")
         expect(added_field.text_field?).to be true
         expect(new_fields.length).to eq(initial_count + 1)
-
       ensure
         temp_file.unlink
       end
