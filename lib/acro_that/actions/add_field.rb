@@ -157,10 +157,10 @@ module AcroThat
         resolver.each_object do |ref, body|
           next unless body
 
-          # Check for /Type /Page with or without space, or /Type/Page
-          is_page = body.include?("/Type /Page") ||
-                    body.include?("/Type/Page") ||
-                    (body.include?("/Type") && body.include?("/Page") && body =~ %r{/Type\s*/Page})
+          # Check for /Type /Page (actual page, not /Type/Pages)
+          # Must match /Type /Page or /Type/Page but NOT /Type/Pages
+          is_page = (body.include?("/Type /Page") ||
+                    (body =~ %r{/Type\s*/Page(?!s)\b}))
           next unless is_page
 
           page_objects << ref
@@ -183,8 +183,8 @@ module AcroThat
                 kids_array.scan(/(\d+)\s+(\d+)\s+R/) do |num_str, gen_str|
                   kid_ref = [num_str.to_i, gen_str.to_i]
                   kid_body = resolver.object_body(kid_ref)
-                  # Check if this kid is a page or another Pages node
-                  if kid_body && (kid_body.include?("/Type /Page") || kid_body.include?("/Type/Page") || (kid_body.include?("/Type") && kid_body.include?("/Page")))
+                  # Check if this kid is a page (not /Type/Pages)
+                  if kid_body && (kid_body.include?("/Type /Page") || kid_body =~ %r{/Type\s*/Page(?!s)\b})
                     page_objects << kid_ref
                   elsif kid_body && kid_body.include?("/Type /Pages")
                     # Recursively find pages in this Pages node
@@ -192,7 +192,7 @@ module AcroThat
                       kid_body[::Regexp.last_match(0)..].scan(/(\d+)\s+(\d+)\s+R/) do |n, g|
                         grandkid_ref = [n.to_i, g.to_i]
                         grandkid_body = resolver.object_body(grandkid_ref)
-                        if grandkid_body && (grandkid_body.include?("/Type /Page") || grandkid_body.include?("/Type/Page"))
+                        if grandkid_body && (grandkid_body.include?("/Type /Page") || grandkid_body =~ %r{/Type\s*/Page(?!s)\b})
                           page_objects << grandkid_ref
                         end
                       end
