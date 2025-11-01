@@ -189,6 +189,31 @@ flattened_doc = AcroThat::Document.flatten_pdf("input.pdf", "output.pdf")
 flattened_bytes = AcroThat::Document.flatten_pdf("input.pdf")
 ```
 
+#### Clearing Fields
+
+The `clear` and `clear!` methods allow you to completely remove unwanted fields by rewriting the entire PDF:
+
+```ruby
+doc = AcroThat::Document.new("form.pdf")
+
+# Remove all fields matching a pattern
+doc.clear!(remove_pattern: /^text-/)
+
+# Keep only specific fields
+doc.clear!(keep_fields: ["Name", "Email"])
+
+# Remove specific fields
+doc.clear!(remove_fields: ["OldField1", "OldField2"])
+
+# Use a block to determine which fields to keep
+doc.clear! { |name| !name.start_with?("temp_") }
+
+# Write the cleared PDF
+doc.write("cleared.pdf", flatten: true)
+```
+
+**Note:** Unlike `remove_field`, which uses incremental updates, `clear` completely rewrites the PDF to exclude unwanted fields. This is more efficient when removing many fields and ensures complete removal. See [Clearing Fields Documentation](docs/cleaning_fields.md) for detailed information.
+
 ### API Reference
 
 #### `AcroThat::Document.new(path_or_io)`
@@ -281,6 +306,30 @@ Class method to flatten a PDF. If `output_path` is provided, writes to that path
 AcroThat::Document.flatten_pdf("input.pdf", "output.pdf")
 flattened_doc = AcroThat::Document.flatten_pdf("input.pdf")
 ```
+
+#### `#clear(options = {})` and `#clear!(options = {})`
+Removes unwanted fields by rewriting the entire PDF. `clear` returns cleared PDF bytes without modifying the document, while `clear!` modifies the document in-place. Options include:
+
+- `keep_fields`: Array of field names to keep (all others removed)
+- `remove_fields`: Array of field names to remove
+- `remove_pattern`: Regex pattern - fields matching this are removed
+- Block: Given field name, return `true` to keep, `false` to remove
+
+```ruby
+# Remove all fields
+cleared = doc.clear(remove_pattern: /.*/)
+
+# Remove fields matching pattern (in-place)
+doc.clear!(remove_pattern: /^text-/)
+
+# Keep only specific fields
+doc.clear!(keep_fields: ["Name", "Email"])
+
+# Use block to filter fields
+doc.clear! { |name| !name.match?(/^[a-f0-9-]{30,}/) }
+```
+
+**Note:** This completely rewrites the PDF (like `flatten`), so it's more efficient than using `remove_field` multiple times. See [Clearing Fields Documentation](docs/cleaning_fields.md) for detailed information.
 
 ### Field Object
 

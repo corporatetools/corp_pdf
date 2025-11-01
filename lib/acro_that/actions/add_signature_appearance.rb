@@ -336,10 +336,10 @@ module AcroThat
       end
 
       def create_form_xobject(_obj_num, image_obj_num, field_width, field_height, _scale_factor, scaled_width,
-                               scaled_height)
+                              scaled_height)
         # Calculate offset to left-align the image horizontally and center vertically
-        offset_x = 0.0  # Left-aligned (no horizontal offset)
-        offset_y = (field_height - scaled_height) / 2.0  # Center vertically
+        offset_x = 0.0 # Left-aligned (no horizontal offset)
+        offset_y = (field_height - scaled_height) / 2.0 # Center vertically
 
         # PDF content stream that draws the image
         # q = save graphics state

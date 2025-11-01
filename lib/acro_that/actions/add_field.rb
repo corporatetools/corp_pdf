@@ -159,8 +159,8 @@ module AcroThat
 
           # Check for /Type /Page (actual page, not /Type/Pages)
           # Must match /Type /Page or /Type/Page but NOT /Type/Pages
-          is_page = (body.include?("/Type /Page") ||
-                    (body =~ %r{/Type\s*/Page(?!s)\b}))
+          is_page = body.include?("/Type /Page") ||
+                    (body =~ %r{/Type\s*/Page(?!s)\b})
           next unless is_page
 
           page_objects << ref

@@ -79,6 +79,7 @@ module AcroThat
 
       # First pass: collect widget information
       @resolver.each_object do |ref, body|
+        puts "ref: #{ref}"
         next unless DictScan.is_widget?(body)
 
         # Extract position from widget
@@ -113,17 +114,15 @@ module AcroThat
         next unless body.include?("/T")
 
         t_tok = DictScan.value_token_after("/T", body)
-        if t_tok
-          widget_name = DictScan.decode_pdf_string(t_tok)
-          if widget_name && !widget_name.empty?
-            widgets_by_name[widget_name] ||= []
-            widgets_by_name[widget_name] << widget_info
-          end
-        end
-      end
+        next unless t_tok
 
-      # Second pass: collect all fields (both field objects and widget annotations with /T)
-      @resolver.each_object do |ref, body|
+        widget_name = DictScan.decode_pdf_string(t_tok)
+        if widget_name && !widget_name.empty?
+          widgets_by_name[widget_name] ||= []
+          widgets_by_name[widget_name] << widget_info
+        end
+
+        # Second pass: collect all fields (both field objects and widget annotations with /T)
         next unless body&.include?("/T")
 
         is_widget_field = DictScan.is_widget?(body)
@@ -277,16 +276,16 @@ module AcroThat
     #   - remove_pattern: Regex pattern - fields matching this are removed
     #   - block: Given field name, return true to keep, false to remove
     # This rewrites the entire PDF (like flatten) but excludes the unwanted fields.
-    def clear(keep_fields: nil, remove_fields: nil, remove_pattern: nil, &block)
+    def clear(keep_fields: nil, remove_fields: nil, remove_pattern: nil)
       root_ref = @resolver.root_ref
-      raise "Cannot cleanup: no /Root found" unless root_ref
+      raise "Cannot clear: no /Root found" unless root_ref
 
       # Build a set of fields to remove
       fields_to_remove = Set.new
-      
+
       # Get all current fields
       all_fields = list_fields
-      
+
       if block_given?
         # Use block to determine which fields to keep
         all_fields.each do |field|
@@ -317,17 +316,17 @@ module AcroThat
       # Build sets of refs to exclude
       field_refs_to_remove = Set.new
       widget_refs_to_remove = Set.new
-      
+
       all_fields.each do |field|
         next unless fields_to_remove.include?(field.name)
-        
+
         field_refs_to_remove.add(field.ref) if field.valid_ref?
-        
+
         # Find all widget annotations for this field
         @resolver.each_object do |widget_ref, body|
           next unless body && DictScan.is_widget?(body)
           next if widget_ref == field.ref
-          
+
           # Match by /Parent reference
           if body =~ %r{/Parent\s+(\d+)\s+(\d+)\s+R}
             widget_parent_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
@@ -336,13 +335,13 @@ module AcroThat
               next
             end
           end
-          
+
           # Also match by field name (/T)
           next unless body.include?("/T")
-          
+
           t_tok = DictScan.value_token_after("/T", body)
           next unless t_tok
-          
+
           widget_name = DictScan.decode_pdf_string(t_tok)
           if widget_name && widget_name == field.name
             widget_refs_to_remove.add(widget_ref)
@@ -356,7 +355,7 @@ module AcroThat
         next if field_refs_to_remove.include?(ref)
         next if widget_refs_to_remove.include?(ref)
         next unless body
-        
+
         objects << { ref: ref, body: body }
       end
 
@@ -368,7 +367,7 @@ module AcroThat
         if af_obj
           af_body = af_obj[:body]
           fields_array_ref = DictScan.value_token_after("/Fields", af_body)
-          
+
           if fields_array_ref && fields_array_ref =~ /\A(\d+)\s+(\d+)\s+R/
             # /Fields points to separate array object
             arr_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
@@ -399,35 +398,29 @@ module AcroThat
       objects.each do |obj|
         body = obj[:body]
         # Check if this is a field object
-        if body&.include?("/FT") && body&.include?("/T")
+        if body&.include?("/FT") && body.include?("/T")
           field_refs_in_file.add(obj[:ref])
         end
-      end
-      
-      objects.each do |obj|
+
         body = obj[:body]
         # Match /Type /Page or /Type/Page but NOT /Type/Pages
         next unless body&.include?("/Type /Page") || body =~ %r{/Type\s*/Page(?!s)\b}
-        
+
         # Handle inline /Annots array
         if body =~ %r{/Annots\s*\[(.*?)\]}
           annots_array_str = ::Regexp.last_match(1)
-          
+
           # Remove widgets that match removed fields
           widget_refs_to_remove.each do |widget_ref|
             annots_array_str = annots_array_str.gsub(/\b#{widget_ref[0]}\s+#{widget_ref[1]}\s+R\b/, "").strip
             annots_array_str = annots_array_str.gsub(/\s+/, " ")
           end
-          
+
           # Also remove orphaned widget references (widgets not in objects_in_file or pointing to non-existent fields)
           annots_refs = annots_array_str.scan(/(\d+)\s+(\d+)\s+R/).map { |n, g| [Integer(n), Integer(g)] }
           annots_refs.each do |annot_ref|
             # Check if this annotation is a widget that should be removed
-            if !objects_in_file.include?(annot_ref)
-              # Widget object doesn't exist - remove it
-              annots_array_str = annots_array_str.gsub(/\b#{annot_ref[0]}\s+#{annot_ref[1]}\s+R\b/, "").strip
-              annots_array_str = annots_array_str.gsub(/\s+/, " ")
-            else
+            if objects_in_file.include?(annot_ref)
               # Widget exists - check if it's an orphaned widget (references non-existent field)
               widget_obj = objects.find { |o| o[:ref] == annot_ref }
               if widget_obj && DictScan.is_widget?(widget_obj[:body])
@@ -442,15 +435,19 @@ module AcroThat
                   end
                 end
               end
+            else
+              # Widget object doesn't exist - remove it
+              annots_array_str = annots_array_str.gsub(/\b#{annot_ref[0]}\s+#{annot_ref[1]}\s+R\b/, "").strip
+              annots_array_str = annots_array_str.gsub(/\s+/, " ")
             end
           end
-          
+
           new_annots = if annots_array_str.empty? || annots_array_str.strip.empty?
-                        "[]"
-                      else
-                        "[#{annots_array_str}]"
-                      end
-          
+                         "[]"
+                       else
+                         "[#{annots_array_str}]"
+                       end
+
           new_body = body.sub(%r{/Annots\s*\[.*?\]}, "/Annots #{new_annots}")
           obj[:body] = new_body
         # Handle indirect /Annots array reference
@@ -459,18 +456,16 @@ module AcroThat
           annots_obj = objects.find { |o| o[:ref] == annots_array_ref }
           if annots_obj
             annots_body = annots_obj[:body]
-            
+
             # Remove widgets that match removed fields
             widget_refs_to_remove.each do |widget_ref|
               annots_body = DictScan.remove_ref_from_array(annots_body, widget_ref)
             end
-            
+
             # Also remove orphaned widget references
             annots_refs = annots_body.scan(/(\d+)\s+(\d+)\s+R/).map { |n, g| [Integer(n), Integer(g)] }
             annots_refs.each do |annot_ref|
-              if !objects_in_file.include?(annot_ref)
-                annots_body = DictScan.remove_ref_from_array(annots_body, annot_ref)
-              else
+              if objects_in_file.include?(annot_ref)
                 widget_obj = objects.find { |o| o[:ref] == annot_ref }
                 if widget_obj && DictScan.is_widget?(widget_obj[:body])
                   widget_body = widget_obj[:body]
@@ -481,9 +476,11 @@ module AcroThat
                     end
                   end
                 end
+              else
+                annots_body = DictScan.remove_ref_from_array(annots_body, annot_ref)
               end
             end
-            
+
             annots_obj[:body] = annots_body
           end
         end
@@ -516,8 +513,8 @@ module AcroThat
     end
 
     # Clean up in-place (mutates current instance)
-    def clear!(**options, &block)
-      cleaned_content = clear(**options, &block)
+    def clear!(...)
+      cleaned_content = clear(...)
       @raw = cleaned_content
       @resolver = AcroThat::ObjectResolver.new(cleaned_content)
       @patches = []

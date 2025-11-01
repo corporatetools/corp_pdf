@@ -38,6 +38,17 @@ Explains how PDF object streams work and how `AcroThat` parses them:
 
 **Key insight:** Object streams compress multiple objects together, but parsing them is still **text traversal**—once decompressed, it's just parsing space-separated numbers and extracting substrings by offset.
 
+### [Clearing Fields](./cleaning_fields.md)
+
+Documentation for the `clear` and `clear!` methods:
+- How to remove unwanted fields completely
+- Difference between `clear` and `remove_field`
+- Pattern matching and field selection
+- Removing orphaned widget references
+- Best practices for clearing PDFs
+
+**Key insight:** `clear` rewrites the entire PDF to exclude unwanted fields, ensuring complete removal rather than just marking fields as deleted.
+
 ## Common Themes
 
 Throughout all documentation, you'll see these recurring themes:
@@ -54,6 +65,7 @@ Throughout all documentation, you'll see these recurring themes:
 1. Start with [PDF Structure](./pdf_structure.md) to understand PDFs at a high level
 2. Read [DictScan Explained](./dict_scan_explained.md) to see how text traversal works
 3. Read [Object Streams](./object_streams.md) to understand compression features
+4. Read [Clearing Fields](./cleaning_fields.md) to learn how to remove unwanted fields
 
 **If you're debugging:**
 - [DictScan Explained](./dict_scan_explained.md) has function-by-function walkthroughs
