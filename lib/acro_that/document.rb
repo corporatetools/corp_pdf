@@ -203,7 +203,7 @@ module AcroThat
         next unless body
 
         is_widget = DictScan.is_widget?(body)
-        
+
         # Collect widget information if this is a widget
         if is_widget
           # Extract position from widget

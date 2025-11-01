@@ -12,6 +12,7 @@ module AcroThat
         @document = document
         @name = name
         @options = options
+        @metadata = options[:metadata] || {}
       end
 
       def call
@@ -60,6 +61,19 @@ module AcroThat
         # Add widget to the target page's /Annots
         add_widget_to_page(widget_obj_num, page_num)
 
+        # If this is a signature field with image data, add the signature appearance
+        if @field_type == "/Sig" && @field_value && !@field_value.empty?
+          image_data = @field_value
+          # Check if value looks like base64 image data or data URI (same logic as update_field)
+          if image_data.is_a?(String) && (image_data.start_with?("data:image/") || (image_data.length > 50 && image_data.match?(%r{^[A-Za-z0-9+/]*={0,2}$})))
+            field_ref = [@field_obj_num, 0]
+            # Try adding signature appearance - use width and height from options
+            action = Actions::AddSignatureAppearance.new(@document, field_ref, image_data, width: width, height: height)
+            # NOTE: We don't fail if appearance addition fails - field was still created successfully
+            action.call
+          end
+        end
+
         true
       end
 
@@ -69,9 +83,33 @@ module AcroThat
         dict = "<<\n"
         dict += "  /FT #{type}\n"
         dict += "  /T #{DictScan.encode_pdf_string(@name)}\n"
-        dict += "  /Ff 0\n"
+
+        # Apply /Ff from metadata, or use default 0
+        field_flags = @metadata[:Ff] || @metadata["Ff"] || 0
+        dict += "  /Ff #{field_flags}\n"
+
         dict += "  /DA (/Helv 0 Tf 0 g)\n"
-        dict += "  /V #{DictScan.encode_pdf_string(value)}\n" if value && !value.empty?
+
+        # For signature fields with image data, don't set /V (appearance stream will be added separately)
+        # For other fields or non-image signature values, set /V normally
+        should_set_value = if type == "/Sig" && value && !value.empty?
+                             # Check if value looks like image data
+                             !(value.is_a?(String) && (value.start_with?("data:image/") || (value.length > 50 && value.match?(%r{^[A-Za-z0-9+/]*={0,2}$}))))
+                           else
+                             true
+                           end
+
+        dict += "  /V #{DictScan.encode_pdf_string(value)}\n" if should_set_value && value && !value.empty?
+
+        # Apply other metadata entries (excluding Ff which we handled above)
+        @metadata.each do |key, val|
+          next if [:Ff, "Ff"].include?(key) # Already handled above
+
+          pdf_key = format_pdf_key(key)
+          pdf_value = format_pdf_value(val)
+          dict += "  #{pdf_key} #{pdf_value}\n"
+        end
+
         dict += ">>"
         dict
       end
@@ -87,7 +125,29 @@ module AcroThat
         widget += "  /Rect #{rect_array}\n"
         widget += "  /F 4\n"
         widget += "  /DA (/Helv 0 Tf 0 g)\n"
-        widget += "  /V #{DictScan.encode_pdf_string(value)}\n" if value && !value.empty?
+
+        # For signature fields with image data, don't set /V (appearance stream will be added separately)
+        # For other fields or non-image signature values, set /V normally
+        should_set_value = if type == "/Sig" && value && !value.empty?
+                             # Check if value looks like image data
+                             !(value.is_a?(String) && (value.start_with?("data:image/") || (value.length > 50 && value.match?(%r{^[A-Za-z0-9+/]*={0,2}$}))))
+                           else
+                             true
+                           end
+
+        widget += "  /V #{DictScan.encode_pdf_string(value)}\n" if should_set_value && value && !value.empty?
+
+        # Apply metadata entries that are valid for widgets
+        # Common widget properties: /Q (alignment), /Ff (field flags), /BS (border style), etc.
+        @metadata.each do |key, val|
+          pdf_key = format_pdf_key(key)
+          pdf_value = format_pdf_value(val)
+          # Only add if not already present (we've added /F above, /V above if value exists)
+          next if ["/F", "/V"].include?(pdf_key)
+
+          widget += "  #{pdf_key} #{pdf_value}\n"
+        end
+
         widget += ">>"
         widget
       end
@@ -219,6 +279,42 @@ module AcroThat
 
         apply_patch(target_page_ref, new_body, page_body) if new_body && new_body != page_body
         true
+      end
+
+      # Format a metadata key as a PDF dictionary key (ensure it starts with /)
+      def format_pdf_key(key)
+        key_str = key.to_s
+        key_str.start_with?("/") ? key_str : "/#{key_str}"
+      end
+
+      # Format a metadata value appropriately for PDF
+      def format_pdf_value(value)
+        case value
+        when Integer, Float
+          value.to_s
+        when String
+          # If it looks like a PDF string (starts with parenthesis or angle bracket), use as-is
+          if value.start_with?("(") || value.start_with?("<") || value.start_with?("/")
+            value
+          else
+            # Otherwise encode as a PDF string
+            DictScan.encode_pdf_string(value)
+          end
+        when Array
+          # Array format: [item1 item2 item3]
+          items = value.map { |v| format_pdf_value(v) }.join(" ")
+          "[#{items}]"
+        when Hash
+          # Dictionary format: << /Key1 value1 /Key2 value2 >>
+          dict = value.map do |k, v|
+            pdf_key = format_pdf_key(k)
+            pdf_val = format_pdf_value(v)
+            "  #{pdf_key} #{pdf_val}"
+          end.join("\n")
+          "<<\n#{dict}\n>>"
+        else
+          value.to_s
+        end
       end
     end
   end

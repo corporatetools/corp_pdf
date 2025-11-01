@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.3] - 2025-01-XX
+## [0.1.5] - 2025-11-01
+
+### Fixed
+- Fixed signature field image data parsing when adding signature fields. Image data (base64 or data URI) is now properly detected and parsed when creating signature fields, matching the behavior of `update_field`.
+
+### Added
+- Added support for `metadata` option in `add_field` to pass PDF widget properties. This allows setting properties like field flags (`Ff`) for multiline text fields, alignment (`Q`), and other PDF widget options directly when creating fields.
+
+## [0.1.4] - 2025-11-01
 
 ### Fixed
 - Fixed bug where fields added to multi-page PDFs were all placed on the same page. Fields now correctly appear on their specified pages when using the `page` option in `add_field`.
