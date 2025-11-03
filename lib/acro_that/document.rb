@@ -22,7 +22,7 @@ module AcroThat
              when String then File.binread(path_or_io)
              else path_or_io.binmode
                   path_or_io.read
-             end
+             end.freeze
       @resolver = AcroThat::ObjectResolver.new(@raw)
       @patches = []
     end
@@ -63,8 +63,9 @@ module AcroThat
 
     # Flatten this document in-place (mutates current instance)
     def flatten!
-      flattened_content = flatten
+      flattened_content = flatten.freeze
       @raw = flattened_content
+      @resolver.clear_cache
       @resolver = AcroThat::ObjectResolver.new(flattened_content)
       @patches = []
 
@@ -603,8 +604,9 @@ module AcroThat
 
     # Clean up in-place (mutates current instance)
     def clear!(...)
-      cleaned_content = clear(...)
+      cleaned_content = clear(...).freeze
       @raw = cleaned_content
+      @resolver.clear_cache
       @resolver = AcroThat::ObjectResolver.new(cleaned_content)
       @patches = []
 
@@ -615,8 +617,9 @@ module AcroThat
     def write(path_out = nil, flatten: true)
       deduped_patches = @patches.reverse.uniq { |p| p[:ref] }.reverse
       writer = AcroThat::IncrementalWriter.new(@raw, deduped_patches)
-      @raw = writer.render
+      @raw = writer.render.freeze
       @patches = []
+      @resolver.clear_cache
       @resolver = AcroThat::ObjectResolver.new(@raw)
 
       flatten! if flatten

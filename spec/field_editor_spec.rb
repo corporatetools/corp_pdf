@@ -39,7 +39,7 @@ RSpec.describe AcroThat::Document do
     end
 
     it "handles non-existent field names gracefully" do
-      pdf_path = File.join(__dir__, "fixtures", "MV100-Statement-of-Fact-Fillable.pdf")
+      pdf_path = File.join(__dir__, "fixtures", "form.pdf")
       expect(File.exist?(pdf_path)).to be true
 
       doc = described_class.new(pdf_path)

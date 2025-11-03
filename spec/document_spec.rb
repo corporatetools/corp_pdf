@@ -7,7 +7,7 @@ require "tempfile"
 RSpec.describe AcroThat::Document do
   describe "#new" do
     it "creates a document from a real PDF file" do
-      pdf_path = File.join(__dir__, "fixtures", "MV100-Statement-of-Fact-Fillable.pdf")
+      pdf_path = File.join(__dir__, "fixtures", "form.pdf")
       expect(File.exist?(pdf_path)).to be true
 
       doc = described_class.new(pdf_path)
@@ -18,7 +18,7 @@ RSpec.describe AcroThat::Document do
     end
 
     it "creates a document from StringIO" do
-      pdf_path = File.join(__dir__, "fixtures", "MV100-Statement-of-Fact-Fillable.pdf")
+      pdf_path = File.join(__dir__, "fixtures", "form.pdf")
       expect(File.exist?(pdf_path)).to be true
 
       io = StringIO.new(File.binread(pdf_path))
@@ -31,7 +31,7 @@ RSpec.describe AcroThat::Document do
     end
 
     it "lists form fields from example PDF" do
-      pdf_path = File.join(__dir__, "fixtures", "MV100-Statement-of-Fact-Fillable.pdf")
+      pdf_path = File.join(__dir__, "fixtures", "form.pdf")
       expect(File.exist?(pdf_path)).to be true
 
       doc = described_class.new(pdf_path)
@@ -44,7 +44,7 @@ RSpec.describe AcroThat::Document do
     end
 
     it "removes a non-existent field" do
-      pdf_path = File.join(__dir__, "fixtures", "MV100-Statement-of-Fact-Fillable.pdf")
+      pdf_path = File.join(__dir__, "fixtures", "form.pdf")
       expect(File.exist?(pdf_path)).to be true
 
       doc = described_class.new(pdf_path)
@@ -59,7 +59,7 @@ RSpec.describe AcroThat::Document do
     end
 
     it "removes a field from a document" do
-      pdf_path = File.join(__dir__, "fixtures", "MV100-Statement-of-Fact-Fillable.pdf")
+      pdf_path = File.join(__dir__, "fixtures", "form.pdf")
       expect(File.exist?(pdf_path)).to be true
 
       doc = described_class.new(pdf_path)
@@ -90,7 +90,7 @@ RSpec.describe AcroThat::Document do
     end
 
     it "adds a field to a document" do
-      pdf_path = File.join(__dir__, "fixtures", "MV100-Statement-of-Fact-Fillable.pdf")
+      pdf_path = File.join(__dir__, "fixtures", "form.pdf")
       expect(File.exist?(pdf_path)).to be true
 
       doc = described_class.new(pdf_path)

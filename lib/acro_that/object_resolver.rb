@@ -49,6 +49,11 @@ module AcroThat
       end
     end
 
+    # Clear the object stream cache to free memory
+    def clear_cache
+      @objstm_cache.clear
+    end
+
     def object_body(ref)
       case (e = @entries[ref])&.type
       when :in_file

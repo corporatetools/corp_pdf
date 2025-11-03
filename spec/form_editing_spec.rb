@@ -17,9 +17,9 @@ RSpec.describe "PDF Form Editing" do
   end
 
   describe "Using real PDF files from examples folder" do
-    let(:example_pdf) { load_example_pdf("MV100-Statement-of-Fact-Fillable.pdf") }
+    let(:example_pdf) { load_example_pdf("form.pdf") }
 
-    describe "with MV100-Statement-of-Fact-Fillable.pdf" do
+    describe "with form.pdf" do
       it "can list all fields" do
         doc = create_document_from_path(example_pdf)
         fields = doc.list_fields
@@ -469,7 +469,7 @@ RSpec.describe "PDF Form Editing" do
     end
 
     describe "AcroThat::Field" do
-      let(:example_pdf) { load_example_pdf("MV100-Statement-of-Fact-Fillable.pdf") }
+      let(:example_pdf) { load_example_pdf("form.pdf") }
 
       let(:document) do
         create_document_from_path(example_pdf)

@@ -16,8 +16,9 @@ module AcroThat
       max_obj = scan_max_obj_number(@orig)
 
       # Ensure we end with a newline before appending
-      original_with_newline = @orig.dup
-      original_with_newline << "\n" unless @orig.end_with?("\n")
+      # Avoid dup by concatenating instead of modifying in place
+      newline_if_needed = @orig.end_with?("\n") ? "".b : "\n".b
+      original_with_newline = @orig + newline_if_needed
 
       buf = +""
       offsets = []
