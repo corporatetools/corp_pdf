@@ -28,6 +28,8 @@ module AcroThat
       @raw = extract_pdf_from_form_data(raw_bytes).freeze
       @resolver = AcroThat::ObjectResolver.new(@raw)
       @patches = []
+      # Track radio button groups: group_id -> parent_field_ref
+      @radio_groups = {}
     end
 
     # Flatten this document to remove incremental updates
@@ -35,18 +37,27 @@ module AcroThat
       root_ref = @resolver.root_ref
       raise "Cannot flatten: no /Root found" unless root_ref
 
-      objects = []
+      # First pass: collect only references (lightweight) and find max_obj_num
+      # This avoids loading all object bodies into memory at once
+      refs = []
+      max_obj_num = 0
       @resolver.each_object do |ref, body|
-        objects << { ref: ref, body: body } if body
+        if body
+          refs << ref
+          max_obj_num = [max_obj_num, ref[0]].max
+        end
       end
 
-      objects.sort_by! { |obj| obj[:ref][0] }
+      # Sort references by object number
+      refs.sort_by! { |ref| ref[0] }
 
+      # Second pass: write objects in sorted order, retrieving bodies on demand
       writer = PDFWriter.new
       writer.write_header
 
-      objects.each do |obj|
-        writer.write_object(obj[:ref], obj[:body])
+      refs.each do |ref|
+        body = @resolver.object_body(ref)
+        writer.write_object(ref, body) if body
       end
 
       writer.write_xref
@@ -58,7 +69,6 @@ module AcroThat
       end
 
       # Write trailer
-      max_obj_num = objects.map { |obj| obj[:ref][0] }.max || 0
       writer.write_trailer(max_obj_num + 1, root_ref, info_ref)
 
       writer.output
@@ -381,9 +391,11 @@ module AcroThat
       all_fields = list_fields
 
       if block_given?
-        # Use block to determine which fields to keep
+        # Use block to determine which fields to remove
+        # Block receives field object (can check field.name, field.value, etc.)
+        # Return true to remove the field, false to keep it
         all_fields.each do |field|
-          fields_to_remove.add(field.name) unless yield(field.name)
+          fields_to_remove.add(field.name) if yield(field)
         end
       elsif keep_fields
         # Keep only specified fields
@@ -443,19 +455,28 @@ module AcroThat
         end
       end
 
-      # Collect objects to write (excluding removed fields and widgets)
-      objects = []
+      # Collect refs to write (excluding removed fields and widgets)
+      # Store refs only initially to avoid loading all bodies into memory at once
+      refs_to_keep = []
       @resolver.each_object do |ref, body|
         next if field_refs_to_remove.include?(ref)
         next if widget_refs_to_remove.include?(ref)
         next unless body
 
-        objects << { ref: ref, body: body }
+        refs_to_keep << ref
+      end
+
+      # Build objects hash - load bodies only for objects we need to modify
+      # For unmodified objects, we'll load bodies on demand during writing
+      objects = []
+      refs_to_keep.each do |ref|
+        body = @resolver.object_body(ref)
+        objects << { ref: ref, body: body } if body
       end
 
       # Process AcroForm to remove field references from /Fields array
       af_ref = acroform_ref
-      if af_ref
+      if af_ref && refs_to_keep.include?(af_ref)
         # Find the AcroForm object in our objects list
         af_obj = objects.find { |o| o[:ref] == af_ref }
         if af_obj

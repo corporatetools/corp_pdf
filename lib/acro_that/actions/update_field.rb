@@ -48,9 +48,8 @@ module AcroThat
           # Check if new_value looks like base64 image data or data URI
           image_data = @new_value
           if image_data && image_data.is_a?(String) && (image_data.start_with?("data:image/") || (image_data.length > 50 && image_data.match?(%r{^[A-Za-z0-9+/]*={0,2}$})))
-            # Try adding signature appearance
-            action = Actions::AddSignatureAppearance.new(@document, fld.ref, image_data)
-            result = action.call
+            # Try adding signature appearance using Signature field class
+            result = AcroThat::Fields::Signature.add_appearance(@document, fld.ref, image_data)
             return result if result
             # If appearance fails, fall through to normal update
           end
@@ -143,17 +142,18 @@ module AcroThat
             end
           end
 
-          # Only create checkbox appearances (not radio buttons)
-          unless is_radio
+          if is_radio
+            # For radio buttons, update all widget appearances (overwrite existing)
+            update_radio_button_appearances(field_ref)
+          else
+            # For checkboxes, create/update appearance
             widget_ref = find_checkbox_widget(fld.ref)
             if widget_ref
               widget_body = get_object_body_with_patch(widget_ref)
-              # Create appearances if /AP doesn't exist
-              unless widget_body&.include?("/AP")
-                rect = extract_widget_rect(widget_body)
-                if rect && rect[:width].positive? && rect[:height].positive?
-                  add_checkbox_appearance(widget_ref, rect[:width], rect[:height])
-                end
+              # Create appearances if /AP doesn't exist, or overwrite if it does
+              rect = extract_widget_rect(widget_body)
+              if rect && rect[:width].positive? && rect[:height].positive?
+                add_checkbox_appearance(widget_ref, rect[:width], rect[:height])
               end
             end
           end
@@ -338,9 +338,14 @@ module AcroThat
         return unless af_ref
 
         acro_body = get_object_body_with_patch(af_ref)
-        return if acro_body.include?("/NeedAppearances")
-
-        acro_patched = DictScan.upsert_key_value(acro_body, "/NeedAppearances", "true")
+        # Set /NeedAppearances false to use our custom appearance streams
+        # If we set it to true, viewers will ignore our custom appearances and generate defaults
+        # (e.g., circular radio buttons instead of our square checkboxes)
+        acro_patched = if acro_body.include?("/NeedAppearances")
+                         DictScan.replace_key_value(acro_body, "/NeedAppearances", "false")
+                       else
+                         DictScan.upsert_key_value(acro_body, "/NeedAppearances", "false")
+                       end
         apply_patch(af_ref, acro_patched, acro_body)
       end
 
@@ -394,6 +399,76 @@ module AcroThat
         ) == "/Btn"
 
         nil
+      end
+
+      def update_radio_button_appearances(parent_ref)
+        # Find all widgets that are children of this parent field
+        widgets = []
+
+        # Check patches first
+        patches = @document.instance_variable_get(:@patches)
+        patches.each do |patch|
+          next unless patch[:body]
+          next unless DictScan.is_widget?(patch[:body])
+
+          next unless patch[:body] =~ %r{/Parent\s+(\d+)\s+(\d+)\s+R}
+
+          widget_parent_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
+          if widget_parent_ref == parent_ref
+            widgets << patch[:ref]
+          end
+        end
+
+        # Also check resolver (for existing widgets)
+        resolver.each_object do |ref, body|
+          next unless body && DictScan.is_widget?(body)
+
+          next unless body =~ %r{/Parent\s+(\d+)\s+(\d+)\s+R}
+
+          widget_parent_ref = [Integer(::Regexp.last_match(1)), Integer(::Regexp.last_match(2))]
+          if (widget_parent_ref == parent_ref) && !widgets.include?(ref)
+            widgets << ref
+          end
+        end
+
+        # Update appearance for each widget using Radio class method
+        widgets.each do |widget_ref|
+          widget_body = get_object_body_with_patch(widget_ref)
+          next unless widget_body
+
+          # Get widget dimensions
+          rect = extract_widget_rect(widget_body)
+          next unless rect && rect[:width].positive? && rect[:height].positive?
+
+          # Get export value from widget's /AP /N dictionary
+          export_value = nil
+          if widget_body.include?("/AP")
+            ap_tok = DictScan.value_token_after("/AP", widget_body)
+            if ap_tok && ap_tok.start_with?("<<")
+              n_tok = DictScan.value_token_after("/N", ap_tok)
+              if n_tok && n_tok.start_with?("<<")
+                # Extract export value (not /Off)
+                export_values = n_tok.scan(%r{/([^\s<>\[\]]+)\s+\d+\s+\d+\s+R}).flatten.reject { |v| v == "Off" }
+                export_value = export_values.first if export_values.any?
+              end
+            end
+          end
+
+          # If no export value found, generate one
+          export_value ||= "widget_#{widget_ref[0]}"
+
+          # Create a Radio instance to reuse appearance creation logic
+          radio_handler = AcroThat::Fields::Radio.new(@document, "", { width: rect[:width], height: rect[:height] })
+          radio_handler.send(
+            :add_radio_button_appearance,
+            widget_ref[0],
+            export_value,
+            0, 0, # x, y not needed when overwriting
+            rect[:width],
+            rect[:height],
+            parent_ref
+          )
+        end
       end
 
       def extract_widget_rect(widget_body)

@@ -75,11 +75,11 @@ doc.clear!(remove_fields: ["OldField1", "OldField2", "GeneratedField3"])
 ### Complex Selection with Block
 
 ```ruby
-# Remove all fields except those matching certain criteria
-doc.clear! do |field_name|
-  # Keep fields that don't look generated
-  !field_name.start_with?("text-") && 
-  !field_name.match?(/^[a-f0-9]{20,}/)
+# Remove fields matching certain criteria
+doc.clear! do |field|
+  # Remove fields that look generated
+  field.name.start_with?("text-") || 
+  field.name.match?(/^[a-f0-9]{20,}/)
 end
 ```
 
@@ -179,11 +179,11 @@ require 'acro_that'
 doc = AcroThat::Document.new("messy_form.pdf")
 
 # Remove all generated/UUID-like fields
-doc.clear! { |name| 
-  # Keep only fields that look intentional
-  !name.match?(/^[a-f0-9-]{30,}/) &&  # Not UUID-like
-  !name.start_with?("temp_") &&       # Not temporary
-  !name.empty?                         # Not empty
+doc.clear! { |field| 
+  # Remove fields that look generated or temporary
+  field.name.match?(/^[a-f0-9-]{30,}/) ||  # UUID-like
+  field.name.start_with?("temp_") ||       # Temporary
+  field.name.empty?                         # Empty name
 }
 
 # Add new fields

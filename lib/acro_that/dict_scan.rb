@@ -130,6 +130,32 @@ module AcroThat
       end
     end
 
+    # Encode a string as a PDF name, escaping special characters with hex encoding
+    # PDF names must escape: # ( ) < > [ ] { } / % and control characters
+    # Example: "(Two Hr) Priority 2" becomes "/#28Two Hr#29 Priority 2"
+    def encode_pdf_name(name)
+      name_str = name.to_s
+      # Remove leading / if present (we'll add it back)
+      name_str = name_str[1..] if name_str.start_with?("/")
+
+      # Encode special characters as hex
+      encoded = name_str.each_byte.map do |byte|
+        char = byte.chr
+        # PDF name special characters that need hex encoding: # ( ) < > [ ] { } / %
+        # Also encode control characters (0x00-0x1F, 0x7F) and non-ASCII (0x80-0xFF)
+        if ["#", "(", ")", "<", ">", "[", "]", "{", "}", "/", "%"].include?(char) ||
+           byte.between?(0x00, 0x1F) || byte == 0x7F || byte.between?(0x80, 0xFF)
+          # Hex encode: # followed by 2-digit hex
+          "##{byte.to_s(16).upcase.rjust(2, '0')}"
+        else
+          # Regular printable ASCII: use as-is
+          char
+        end
+      end.join
+
+      "/#{encoded}"
+    end
+
     # Format a metadata key as a PDF dictionary key (ensure it starts with /)
     def format_pdf_key(key)
       key_str = key.to_s

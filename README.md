@@ -175,6 +175,84 @@ doc.write("form_with_signature.pdf")
 
 **Note**: PNG image processing requires the `chunky_png` gem, which is included as a dependency. JPEG images can be processed without any additional dependencies.
 
+#### Radio Buttons
+
+Radio buttons allow users to select a single option from a group of mutually exclusive choices. Radio buttons in AcroThat are created using the `:radio` type and require a `group_id` to group related buttons together.
+
+```ruby
+doc = AcroThat::Document.new("form.pdf")
+
+# Create a radio button group with multiple options
+# All buttons in the same group must share the same group_id
+
+# First radio button in the group (creates the parent field)
+doc.add_field("Option1", 
+  type: :radio,
+  group_id: "my_radio_group",
+  value: "option1",  # Export value for this button
+  x: 100,
+  y: 500,
+  width: 20,
+  height: 20,
+  page: 1,
+  selected: true  # This button will be selected by default
+)
+
+# Second radio button in the same group
+doc.add_field("Option2", 
+  type: :radio,
+  group_id: "my_radio_group",  # Same group_id as above
+  value: "option2",
+  x: 100,
+  y: 470,
+  width: 20,
+  height: 20,
+  page: 1
+)
+
+# Third radio button in the same group
+doc.add_field("Option3", 
+  type: :radio,
+  group_id: "my_radio_group",  # Same group_id
+  value: "option3",
+  x: 100,
+  y: 440,
+  width: 20,
+  height: 20,
+  page: 1
+)
+
+# Write the PDF with radio buttons
+doc.write("form_with_radio.pdf")
+```
+
+**Key Points:**
+- **`group_id`**: Required. All radio buttons that should be mutually exclusive must share the same `group_id`. This can be any string or identifier.
+- **`type: :radio`**: Required. Specifies that this is a radio button field.
+- **`value`**: The export value for this specific button. This is what gets returned when the button is selected. If not provided, a unique value will be generated automatically.
+- **`selected`**: Optional boolean (`true` or `false`, or string `"true"`). If set to `true`, this button will be selected by default. Only one button in a group should have `selected: true`. If not specified, the button defaults to unselected.
+- **Positioning**: Each radio button needs its own `x`, `y`, `width`, `height`, and `page` values to position it on the form.
+
+**Example with multiple groups:**
+
+```ruby
+doc = AcroThat::Document.new("form.pdf")
+
+# First radio button group (e.g., "Gender")
+doc.add_field("Male", type: :radio, group_id: "gender", value: "male", x: 100, y: 500, width: 20, height: 20, page: 1, selected: true)
+doc.add_field("Female", type: :radio, group_id: "gender", value: "female", x: 100, y: 470, width: 20, height: 20, page: 1)
+doc.add_field("Other", type: :radio, group_id: "gender", value: "other", x: 100, y: 440, width: 20, height: 20, page: 1)
+
+# Second radio button group (e.g., "Age Range")
+doc.add_field("18-25", type: :radio, group_id: "age", value: "18-25", x: 200, y: 500, width: 20, height: 20, page: 1)
+doc.add_field("26-35", type: :radio, group_id: "age", value: "26-35", x: 200, y: 470, width: 20, height: 20, page: 1, selected: true)
+doc.add_field("36+", type: :radio, group_id: "age", value: "36+", x: 200, y: 440, width: 20, height: 20, page: 1)
+
+doc.write("form_with_multiple_groups.pdf")
+```
+
+**Note:** Radio buttons are automatically configured with the correct PDF flags to enable mutual exclusivity within a group. When a user selects one radio button, all others in the same group are automatically deselected.
+
 #### Flattening PDFs
 
 ```ruby
@@ -269,8 +347,10 @@ Adds a new form field to the document. Options include:
 - `height`: Field height (Integer, default: 20)
 - `page`: Page number to add the field to (Integer, default: 1)
 - `type`: Field type (Symbol or String, default: `"/Tx"`). Options:
-  - Symbol keys: `:text`, `:button`, `:choice`, `:signature`
+  - Symbol keys: `:text`, `:button`, `:choice`, `:signature`, `:radio`
   - PDF type strings: `"/Tx"`, `"/Btn"`, `"/Ch"`, `"/Sig"`
+- `group_id`: Required for radio buttons. String or identifier to group radio buttons together. All radio buttons in the same group must share the same `group_id`.
+- `selected`: Optional for radio buttons. Boolean (`true` or `false`, or string `"true"`). If set to `true`, this radio button will be selected by default.
 
 Returns a `Field` object if successful.
 
@@ -280,6 +360,9 @@ field = doc.add_field("NewField", value: "Value", x: 100, y: 500, width: 200, he
 
 # Using PDF type strings
 field = doc.add_field("ButtonField", type: "/Btn", x: 100, y: 500, width: 20, height: 20, page: 1)
+
+# Radio button example
+field = doc.add_field("Option1", type: :radio, group_id: "my_group", value: "option1", x: 100, y: 500, width: 20, height: 20, page: 1, selected: true)
 ```
 
 #### `#update_field(name, new_value, new_name: nil)`
@@ -351,8 +434,8 @@ doc.clear!(remove_pattern: /^text-/)
 # Keep only specific fields
 doc.clear!(keep_fields: ["Name", "Email"])
 
-# Use block to filter fields
-doc.clear! { |name| !name.match?(/^[a-f0-9-]{30,}/) }
+# Use block to filter fields (return true to remove)
+doc.clear! { |field| field.name.match?(/^[a-f0-9-]{30,}/) }
 ```
 
 **Note:** This completely rewrites the PDF (like `flatten`), so it's more efficient than using `remove_field` multiple times. See [Clearing Fields Documentation](docs/cleaning_fields.md) for detailed information.
