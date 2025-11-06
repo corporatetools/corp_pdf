@@ -2,6 +2,8 @@
 .rspec_status
 
 *.pdf
+*.png
+*.jpg
 *.gem
 
 research/

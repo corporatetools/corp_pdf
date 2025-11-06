@@ -47,29 +47,64 @@ module AcroThat
       # Sort offsets and group consecutive objects into subsections
       sorted = @offsets.sort_by { |num, gen, _offset| [num, gen] }
 
+      # Find max object number to determine Size
+      max_obj_num = sorted.map { |num, _gen, _offset| num }.max || 0
+
+      # Build xref entries covering all objects from 0 to max_obj_num
+      # Missing objects are marked as free (type 'f')
       i = 0
-      while i < sorted.length
-        first_num = sorted[i][0]
+      current_obj = 0
 
-        # Find consecutive run
-        run_length = 1
-        while (i + run_length) < sorted.length &&
-              sorted[i + run_length][0] == first_num + run_length &&
-              sorted[i + run_length][1] == sorted[i][1]
-          run_length += 1
+      while current_obj <= max_obj_num
+        # Find next existing object
+        next_existing = sorted.find { |num, _gen, _offset| num >= current_obj }
+        
+        if next_existing && next_existing[0] == current_obj
+          # Object exists - find consecutive run of existing objects
+          first_num = current_obj
+          run_length = 1
+          
+          while (i + run_length) < sorted.length &&
+                sorted[i + run_length][0] == first_num + run_length &&
+                sorted[i + run_length][1] == sorted[i][1]
+            run_length += 1
+          end
+
+          # Write subsection header
+          xref << "#{first_num} #{run_length}\n".b
+
+          # Write entries in this subsection
+          run_length.times do |j|
+            offset = sorted[i + j][2]
+            gen = sorted[i + j][1]
+            xref << format("%010d %05d n \n", offset, gen).b
+          end
+
+          i += run_length
+          current_obj = first_num + run_length
+        else
+          # Object doesn't exist - find consecutive run of missing objects
+          first_missing = current_obj
+          missing_count = 1
+          
+          while current_obj + missing_count <= max_obj_num
+            check_obj = current_obj + missing_count
+            if sorted.any? { |num, _gen, _offset| num == check_obj }
+              break
+            end
+            missing_count += 1
+          end
+
+          # Write subsection header for missing objects
+          xref << "#{first_missing} #{missing_count}\n".b
+
+          # Write free entries
+          missing_count.times do
+            xref << "0000000000 65535 f \n".b
+          end
+
+          current_obj = first_missing + missing_count
         end
-
-        # Write subsection header
-        xref << "#{first_num} #{run_length}\n".b
-
-        # Write entries in this subsection
-        run_length.times do |j|
-          offset = sorted[i + j][2]
-          gen = sorted[i + j][1]
-          xref << format("%010d %05d n \n", offset, gen).b
-        end
-
-        i += run_length
       end
 
       @buffer << xref
