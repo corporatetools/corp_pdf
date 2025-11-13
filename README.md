@@ -11,6 +11,16 @@ A minimal pure Ruby library for parsing and editing PDF AcroForm fields.
 - ✅ **Minimal PDF Engine** - Basic PDF parser/writer for AcroForm manipulation
 - ✅ **Ruby 3.1+** - Modern Ruby support
 
+## Documentation
+
+📚 **Detailed documentation** is available in the [`docs/`](./docs/) directory:
+
+- **[PDF Structure](./docs/pdf_structure.md)** - Understanding PDF file structure and text-based syntax
+- **[DictScan Explained](./docs/dict_scan_explained.md)** - How text traversal parses PDF dictionaries
+- **[Object Streams](./docs/object_streams.md)** - Parsing compressed PDF object streams
+- **[Clearing Fields](./docs/clear_fields.md)** - Complete guide to removing unwanted fields
+- **[Documentation Index](./docs/README.md)** - Overview of all available documentation
+
 ## Installation
 
 Add this line to your application's Gemfile:
